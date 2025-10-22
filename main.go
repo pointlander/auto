@@ -14,6 +14,33 @@ import (
 //go:embed books/*
 var Text embed.FS
 
+// Histogram is a buffered histogram
+type Histogram struct {
+	Vector [256]byte
+	Buffer [128]byte
+	Index  int
+	Size   int
+}
+
+// NewHistogram make a new histogram
+func NewHistogram(size int) Histogram {
+	h := Histogram{
+		Size: size,
+	}
+	return h
+}
+
+// Add adds a symbol to the histogram
+func (h *Histogram) Add(s byte) {
+	index := (h.Index + 1) % h.Size
+	if symbol := h.Buffer[index]; h.Vector[symbol] > 0 {
+		h.Vector[symbol]--
+	}
+	h.Buffer[index] = s
+	h.Vector[s]++
+	h.Index = index
+}
+
 func main() {
 	type File struct {
 		Name string
@@ -50,4 +77,5 @@ func main() {
 		load(&files[i])
 		fmt.Println(files[i].Name)
 	}
+
 }
