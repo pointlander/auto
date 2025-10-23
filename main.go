@@ -102,7 +102,8 @@ func main() {
 	}
 
 	type Auto struct {
-		Set tf64.Set
+		Set       tf64.Set
+		Iteration int
 	}
 
 	rng := rand.New(rand.NewSource(1))
@@ -139,16 +140,15 @@ func main() {
 	histogram := NewHistogram(33)
 	iteration := 0
 
-	pow := func(x float64) float64 {
-		y := math.Pow(x, float64(iteration+1))
-		if math.IsNaN(y) || math.IsInf(y, 0) {
-			return 0
-		}
-		return y
-	}
 	histogram.Add(0)
 	for _, value := range files[0].Data {
-		histogram.Add(value)
+		pow := func(x float64) float64 {
+			y := math.Pow(x, float64(autos[value].Iteration+1))
+			if math.IsNaN(y) || math.IsInf(y, 0) {
+				return 0
+			}
+			return y
+		}
 
 		others := tf64.NewSet()
 		others.Add("input", 256, 1)
@@ -205,8 +205,11 @@ func main() {
 			}
 		}
 		iteration++
+		autos[value].Iteration++
 		if iteration%1024 == 0 || iteration < 1024 {
 			fmt.Println(l)
 		}
+
+		histogram.Add(value)
 	}
 }
