@@ -111,9 +111,9 @@ func main() {
 	autos := make([]Auto, 256)
 	for i := range autos {
 		autos[i].Set = tf64.NewSet()
-		autos[i].Set.Add("l1", 256, 128)
-		autos[i].Set.Add("b1", 128, 1)
-		autos[i].Set.Add("l2", 256, 256)
+		autos[i].Set.Add("l1", 256, 256)
+		autos[i].Set.Add("b1", 256, 1)
+		autos[i].Set.Add("l2", 512, 256)
 		autos[i].Set.Add("b2", 256, 1)
 
 		for ii := range autos[i].Set.Weights {
@@ -141,7 +141,7 @@ func main() {
 	iteration := 0
 
 	histogram.Add(0)
-	for _, value := range files[0].Data {
+	for _, value := range files[0].Data[:256*1024] {
 		pow := func(x float64) float64 {
 			y := math.Pow(x, float64(autos[value].Iteration+1))
 			if math.IsNaN(y) || math.IsInf(y, 0) {
@@ -207,9 +207,67 @@ func main() {
 		iteration++
 		autos[value].Iteration++
 		if iteration%1024 == 0 || iteration < 1024 {
-			fmt.Println(l)
+			fmt.Println(iteration, l)
 		}
 
 		histogram.Add(value)
 	}
+
+	prompt := "What is the meaning of life?"
+	str := []byte(prompt)
+	histogram = NewHistogram(33)
+	for _, value := range str {
+		histogram.Add(value)
+	}
+	for range 33 {
+		distribution := make([]float64, len(autos))
+		for i := range autos {
+			others := tf64.NewSet()
+			others.Add("input", 256, 1)
+			others.Add("output", 256, 1)
+			in := others.ByName["input"]
+			out := others.ByName["output"]
+			sum := 0
+			for _, v := range histogram.Vector {
+				sum += int(v)
+			}
+			for _, v := range histogram.Vector {
+				vv := float64(v) / float64(sum)
+				in.X = append(in.X, vv)
+				out.X = append(out.X, vv)
+			}
+			l1 := tf64.Everett(tf64.Add(tf64.Mul(autos[i].Set.Get("l1"), others.Get("input")), autos[i].Set.Get("b1")))
+			l2 := tf64.Add(tf64.Mul(autos[i].Set.Get("l2"), l1), autos[i].Set.Get("b2"))
+			loss := tf64.Sum(tf64.Quadratic(l2, others.Get("output")))
+
+			autos[i].Set.Zero()
+			others.Zero()
+			loss(func(a *tf64.V) bool {
+				distribution[i] = a.X[0]
+				return true
+			})
+		}
+		max := 0.0
+		for _, value := range distribution {
+			if value > max {
+				max = value
+			}
+		}
+		sum := 0.0
+		for i, value := range distribution {
+			value = max - value
+			sum += value
+			distribution[i] = value
+		}
+		total, selected := 0.0, rng.Float64()
+		for i, value := range distribution {
+			total += value / sum
+			if selected < total {
+				str = append(str, byte(i))
+				histogram.Add(byte(i))
+				break
+			}
+		}
+	}
+	fmt.Println(string(str))
 }
