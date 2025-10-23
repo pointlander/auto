@@ -137,7 +137,6 @@ func main() {
 	}
 
 	histogram := NewHistogram(33)
-	previous := byte(0)
 	iteration := 0
 
 	pow := func(x float64) float64 {
@@ -149,6 +148,8 @@ func main() {
 	}
 	histogram.Add(0)
 	for _, value := range files[0].Data {
+		histogram.Add(value)
+
 		others := tf64.NewSet()
 		others.Add("input", 256, 1)
 		others.Add("output", 256, 1)
@@ -163,12 +164,12 @@ func main() {
 			in.X = append(in.X, vv)
 			out.X = append(out.X, vv)
 		}
-		l1 := tf64.Everett(tf64.Add(tf64.Mul(autos[previous].Set.Get("l1"), others.Get("input")), autos[previous].Set.Get("b1")))
-		l2 := tf64.Add(tf64.Mul(autos[previous].Set.Get("l2"), l1), autos[previous].Set.Get("b2"))
+		l1 := tf64.Everett(tf64.Add(tf64.Mul(autos[value].Set.Get("l1"), others.Get("input")), autos[value].Set.Get("b1")))
+		l2 := tf64.Add(tf64.Mul(autos[value].Set.Get("l2"), l1), autos[value].Set.Get("b2"))
 		loss := tf64.Sum(tf64.Quadratic(l2, others.Get("output")))
 
 		l := 0.0
-		autos[previous].Set.Zero()
+		autos[value].Set.Zero()
 		others.Zero()
 		l = tf64.Gradient(loss).X[0]
 		if math.IsNaN(float64(l)) || math.IsInf(float64(l), 0) {
@@ -177,7 +178,7 @@ func main() {
 		}
 
 		norm := 0.0
-		for _, p := range autos[previous].Set.Weights {
+		for _, p := range autos[value].Set.Weights {
 			for _, d := range p.D {
 				norm += d * d
 			}
@@ -188,7 +189,7 @@ func main() {
 		if norm > 1 {
 			scaling = 1 / norm
 		}
-		for _, w := range autos[previous].Set.Weights {
+		for _, w := range autos[value].Set.Weights {
 			for ii, d := range w.D {
 				g := d * scaling
 				m := B1*w.States[StateM][ii] + (1-B1)*g
@@ -204,11 +205,8 @@ func main() {
 			}
 		}
 		iteration++
-		if iteration%1024 == 0 {
+		if iteration%1024 == 0 || iteration < 1024 {
 			fmt.Println(l)
 		}
-
-		histogram.Add(value)
-		previous = value
 	}
 }
