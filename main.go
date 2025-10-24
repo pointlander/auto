@@ -64,10 +64,48 @@ func (h *Histogram) Add(s byte) {
 	h.Index = index
 }
 
+const (
+	order = 4
+)
+
+type Markov [order]byte
+type Model [order]map[Markov][]uint32
+
+// Lookup looks a vector up
+func Lookup(markov *[order]Markov, model *Model) []float32 {
+	for i := range markov {
+		i = order - 1 - i
+		vector := model[i][markov[i]]
+		if vector != nil {
+			sum := float32(0.0)
+			for _, value := range vector {
+				sum += float32(value)
+			}
+			result := make([]float32, len(vector))
+			for ii, value := range vector {
+				result[ii] = float32(value) / sum
+			}
+			return result
+		}
+	}
+	return nil
+}
+
+// Iterate iterates a markov model
+func Iterate(markov *[order]Markov, state byte) {
+	for i := range markov {
+		state := state
+		for ii, value := range markov[i][:i+1] {
+			markov[i][ii], state = state, value
+		}
+	}
+}
+
 func main() {
 	type File struct {
-		Name string
-		Data []byte
+		Name  string
+		Data  []byte
+		Model Model
 	}
 
 	files := []File{
@@ -92,6 +130,26 @@ func main() {
 		data, err := io.ReadAll(breader)
 		if err != nil {
 			panic(err)
+		}
+
+		markov := [order]Markov{}
+		for i := range book.Model {
+			book.Model[i] = make(map[Markov][]uint32)
+		}
+		for _, value := range data {
+			for ii := range markov {
+				vector := book.Model[ii][markov[ii]]
+				if vector == nil {
+					vector = make([]uint32, 256)
+				}
+				vector[value]++
+				book.Model[ii][markov[ii]] = vector
+
+				state := value
+				for iii, value := range markov[ii][:ii+1] {
+					markov[ii][iii], state = state, value
+				}
+			}
 		}
 		book.Data = data
 	}
@@ -137,10 +195,12 @@ func main() {
 		}
 	}
 
-	histogram := NewHistogram(33)
+	//histogram := NewHistogram(33)
+	markov := [order]Markov{}
 	iteration := 0
 
-	histogram.Add(0)
+	//histogram.Add(0)
+	Iterate(&markov, 0)
 	for _, value := range files[0].Data[:256*1024] {
 		pow := func(x float64) float64 {
 			y := math.Pow(x, float64(autos[value].Iteration+1))
@@ -155,7 +215,7 @@ func main() {
 		others.Add("output", 256, 1)
 		in := others.ByName["input"]
 		out := others.ByName["output"]
-		sum := 0
+		/*sum := 0
 		for _, v := range histogram.Vector {
 			sum += int(v)
 		}
@@ -163,7 +223,13 @@ func main() {
 			vv := float64(v) / float64(sum)
 			in.X = append(in.X, vv)
 			out.X = append(out.X, vv)
+		}*/
+		vector := Lookup(&markov, &files[0].Model)
+		for _, v := range vector {
+			in.X = append(in.X, float64(v))
+			out.X = append(out.X, float64(v))
 		}
+
 		l1 := tf64.Everett(tf64.Add(tf64.Mul(autos[value].Set.Get("l1"), others.Get("input")), autos[value].Set.Get("b1")))
 		l2 := tf64.Add(tf64.Mul(autos[value].Set.Get("l2"), l1), autos[value].Set.Get("b2"))
 		loss := tf64.Sum(tf64.Quadratic(l2, others.Get("output")))
@@ -210,14 +276,17 @@ func main() {
 			fmt.Println(iteration, l)
 		}
 
-		histogram.Add(value)
+		//histogram.Add(value)
+		Iterate(&markov, value)
 	}
 
 	prompt := "What is the meaning of life?"
 	str := []byte(prompt)
-	histogram = NewHistogram(33)
+	//histogram = NewHistogram(33)
+	markov = [order]Markov{}
 	for _, value := range str {
-		histogram.Add(value)
+		//histogram.Add(value)
+		Iterate(&markov, value)
 	}
 	for range 33 {
 		distribution := make([]float64, len(autos))
@@ -227,7 +296,7 @@ func main() {
 			others.Add("output", 256, 1)
 			in := others.ByName["input"]
 			out := others.ByName["output"]
-			sum := 0
+			/*sum := 0
 			for _, v := range histogram.Vector {
 				sum += int(v)
 			}
@@ -235,6 +304,11 @@ func main() {
 				vv := float64(v) / float64(sum)
 				in.X = append(in.X, vv)
 				out.X = append(out.X, vv)
+			}*/
+			vector := Lookup(&markov, &files[0].Model)
+			for _, v := range vector {
+				in.X = append(in.X, float64(v))
+				out.X = append(out.X, float64(v))
 			}
 			l1 := tf64.Everett(tf64.Add(tf64.Mul(autos[i].Set.Get("l1"), others.Get("input")), autos[i].Set.Get("b1")))
 			l2 := tf64.Add(tf64.Mul(autos[i].Set.Get("l2"), l1), autos[i].Set.Get("b2"))
@@ -264,7 +338,8 @@ func main() {
 			total += value / sum
 			if selected < total {
 				str = append(str, byte(i))
-				histogram.Add(byte(i))
+				//histogram.Add(byte(i))
+				Iterate(&markov, byte(i))
 				break
 			}
 		}
